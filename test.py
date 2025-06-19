@@ -16,8 +16,8 @@ except Exception:
 
 # ============ CONFIGURE GEMINI API ============
 
-YOUR_API_KEY_HERE="AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc"
-genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your Gemini API Key
+#YOUR_API_KEY_HERE="AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc"
+genai.configure(api_key="AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc")  # Replace with your Gemini API Key
 
 # ============ TRANSLATE TEXT USING GEMINI ============
 def translate_text(text, target_lang, source_lang=None):
