@@ -4,13 +4,13 @@ import speech_recognition as sr
 import av
 from googletrans import Translator
 
-# Setup
-st.set_page_config(page_title="Live Voice Translator", layout="centered")
+# Basic app settings
+st.set_page_config(page_title="Voice Translator", layout="centered")
 st.title("🎤 Speak to Translate")
-st.markdown("Speak directly into the microphone and get translation instantly.")
+st.markdown("Use your microphone to speak and see real-time translation.")
 
-# Language options
-lang = st.selectbox("Translate to", ["English", "Malayalam", "Hindi", "French", "German"])
+# Language selection
+lang = st.selectbox("Select translation language", ["English", "Malayalam", "Hindi", "French", "German"])
 lang_codes = {
     "English": "en",
     "Malayalam": "ml",
@@ -19,31 +19,30 @@ lang_codes = {
     "German": "de"
 }
 
-# Translator and recognizer
-translator = Translator()
+# Setup recognizer and translator
 recognizer = sr.Recognizer()
+translator = Translator()
 
-# Audio processing class
+# Clear file upload section (nothing related to file handling)
+# Mic audio processor
 class AudioProcessor:
     def __init__(self) -> None:
-        self.recognizer = recognizer
-        self.translator = translator
-
+        self.text = ""
+    
     def recv_audio(self, frame: av.AudioFrame) -> av.AudioFrame:
-        pcm = frame.to_ndarray().flatten().tobytes()
-        audio_data = sr.AudioData(pcm, frame.sample_rate, 2)
+        audio_data = sr.AudioData(frame.to_ndarray().flatten().tobytes(), frame.sample_rate, 2)
         try:
-            text = self.recognizer.recognize_google(audio_data)
+            text = recognizer.recognize_google(audio_data)
             st.session_state['text'] = text
         except sr.UnknownValueError:
-            st.session_state['text'] = "[Unclear speech]"
+            st.session_state['text'] = "[Could not understand]"
         except sr.RequestError as e:
             st.session_state['text'] = f"[Error: {e}]"
         return frame
 
-# WebRTC streaming (mic only)
+# WebRTC mic stream
 webrtc_streamer(
-    key="live-translate",
+    key="listen",
     mode=WebRtcMode.SENDONLY,
     in_audio=True,
     audio_processor_factory=AudioProcessor,
@@ -53,9 +52,12 @@ webrtc_streamer(
     )
 )
 
-# Display translation
+# Display text and translation
 if 'text' in st.session_state:
-    spoken = st.session_state['text']
-    translated = translator.translate(spoken, dest=lang_codes[lang]).text
-    st.markdown(f"🗣️ You said: **{spoken}**")
-    st.markdown(f"🌐 Translation ({lang}): **{translated}**")
+    original = st.session_state['text']
+    translated = translator.translate(original, dest=lang_codes[lang]).text
+    st.markdown(f"**🗣️ You said:** `{original}`")
+    st.markdown(f"**🌐 Translated ({lang}):** `{translated}`")
+
+
+  
