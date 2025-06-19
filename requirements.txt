@@ -4,3 +4,4 @@ SpeechRecognition
 langdetect
 gtts
 google-generativeai
+librosa
