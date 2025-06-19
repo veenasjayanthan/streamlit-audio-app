@@ -1,16 +1,29 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
-import speech_recognition as sr
-import av
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
+import queue
+import threading
+import whisper
 from googletrans import Translator
+import numpy as np
+import av
+import tempfile
+import os
+import wave
 
-# Basic app settings
-st.set_page_config(page_title="Voice Translator", layout="centered")
-st.title("🎤 Speak to Translate")
-st.markdown("Use your microphone to speak and see real-time translation.")
+# Load Whisper model
+model = whisper.load_model("base")  # or "tiny" for faster, "small" for better
+
+# Translator
+translator = Translator()
+
+# Queue to store audio frames
+audio_queue = queue.Queue()
 
 # Language selection
-lang = st.selectbox("Select translation language", ["English", "Malayalam", "Hindi", "French", "German"])
+st.set_page_config(page_title="Live Voice Translator")
+st.title("🎙️ Real-Time Voice Translation")
+
+lang = st.selectbox("Translate to", ["English", "Malayalam", "Hindi", "French", "German"])
 lang_codes = {
     "English": "en",
     "Malayalam": "ml",
@@ -19,45 +32,61 @@ lang_codes = {
     "German": "de"
 }
 
-# Setup recognizer and translator
-recognizer = sr.Recognizer()
-translator = Translator()
-
-# Clear file upload section (nothing related to file handling)
-# Mic audio processor
+# Audio processing class
 class AudioProcessor:
-    def __init__(self) -> None:
-        self.text = ""
-    
-    def recv_audio(self, frame: av.AudioFrame) -> av.AudioFrame:
-        audio_data = sr.AudioData(frame.to_ndarray().flatten().tobytes(), frame.sample_rate, 2)
-        try:
-            text = recognizer.recognize_google(audio_data)
-            st.session_state['text'] = text
-        except sr.UnknownValueError:
-            st.session_state['text'] = "[Could not understand]"
-        except sr.RequestError as e:
-            st.session_state['text'] = f"[Error: {e}]"
+    def __init__(self):
+        self.buffer = b""
+        self.sample_rate = 48000
+
+    def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
+        audio = frame.to_ndarray()
+        audio = audio.mean(axis=0).astype(np.int16).tobytes()  # Mono
+        audio_queue.put(audio)
         return frame
 
-# WebRTC mic stream
 webrtc_streamer(
-    key="listen",
+    key="live-voice",
     mode=WebRtcMode.SENDONLY,
     in_audio=True,
-    audio_processor_factory=AudioProcessor,
-    client_settings=ClientSettings(
-        media_stream_constraints={"audio": True, "video": False},
-        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
-    )
+    audio_processor_factory=AudioProcessor
 )
 
-# Display text and translation
-if 'text' in st.session_state:
-    original = st.session_state['text']
-    translated = translator.translate(original, dest=lang_codes[lang]).text
-    st.markdown(f"**🗣️ You said:** `{original}`")
-    st.markdown(f"**🌐 Translated ({lang}):** `{translated}`")
+# Background thread to transcribe and translate
+def process_audio():
+    audio_bytes = b""
+    while True:
+        try:
+            audio_chunk = audio_queue.get(timeout=5)
+            audio_bytes += audio_chunk
 
+            if len(audio_bytes) >= 48000 * 5 * 2:  # 5 seconds of audio
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                    wf = wave.open(f.name, 'wb')
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(48000)
+                    wf.writeframes(audio_bytes)
+                    wf.close()
 
-  
+                    result = model.transcribe(f.name)
+                    text = result["text"]
+
+                    if text.strip():
+                        translated = translator.translate(text, dest=lang_codes[lang]).text
+                        st.session_state["last_text"] = text
+                        st.session_state["last_translated"] = translated
+
+                os.unlink(f.name)
+                audio_bytes = b""
+        except queue.Empty:
+            continue
+
+# Start the background thread
+if "audio_thread_started" not in st.session_state:
+    threading.Thread(target=process_audio, daemon=True).start()
+    st.session_state["audio_thread_started"] = True
+
+# Show results
+if "last_text" in st.session_state:
+    st.markdown(f"**🗣️ You said:** `{st.session_state['last_text']}`")
+    st.markdown(f"**🌐 Translated ({lang}):** `{st.session_state['last_translated']}`")
