@@ -7,11 +7,11 @@ import speech_recognition as sr
 from datetime import datetime
 import google.generativeai as genai
 from langdetect import detect
+import streamlit.components.v1 as components
 
-# 🔐 Configure Gemini with secret key (set in Streamlit Cloud)
+# 🔐 Configure Gemini API Key
 GEMINI_API_KEY = "AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc"
-
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+genai.configure(api_key=GEMINI_API_KEY)
 
 # 🌐 Translate using Gemini
 def translate_text(text, target_lang, source_lang=None):
@@ -55,41 +55,76 @@ def get_supported_languages():
 st.set_page_config(page_title="🌐 AI Chat with OCR", layout="centered")
 st.markdown("<h1 style='text-align:center'>🌐 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
 
-# ⏳ History
+# ⏳ Init history
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# 🌐 Language choice
+# 🌐 Choose language
 languages = get_supported_languages()
 lang_name = st.selectbox("Choose Target Language", list(languages.values()))
 lang_code = [k for k, v in languages.items() if v == lang_name][0]
 
-# 🎤 Voice or Text Input
-st.markdown("### 🎤 Speak or 💬 Type")
+# 🎤 Browser Microphone Recorder
+st.markdown("### 🎙️ Record Voice (browser-based)")
+components.html("""
+    <html>
+    <body>
+    <button onclick="startRecording()">🎤 Start Recording</button>
+    <p id="status"></p>
+    <script>
+        let mediaRecorder;
+        let audioChunks = [];
+
+        async function startRecording() {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+            document.getElementById("status").innerText = "Recording...";
+
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(audioChunks, { type: 'audio/wav' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "recorded.wav";
+                a.click();
+                document.getElementById("status").innerText = "Recording saved! Upload below.";
+            };
+
+            setTimeout(() => {
+                mediaRecorder.stop();
+            }, 6000);
+        }
+    </script>
+    </body>
+    </html>
+""", height=220)
+
+# 🔼 Upload recorded audio
+st.markdown("### 🔼 Upload Recorded Audio Below")
 user_input = ""
-use_voice = st.toggle("Use Voice Input", value=False)
+audio_file = st.file_uploader("Upload your voice (wav/mp3)", type=["wav", "mp3"])
+if audio_file:
+    recognizer = sr.Recognizer()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+        temp_audio.write(audio_file.read())
+        temp_path = temp_audio.name
+    with sr.AudioFile(temp_path) as source:
+        audio = recognizer.record(source)
+    try:
+        user_input = recognizer.recognize_google(audio)
+        st.write("You said:", user_input)
+    except:
+        st.error("Sorry, could not understand audio.")
 
-if not use_voice:
-    user_input = st.text_input("Enter your message")
-else:
-    audio_file = st.file_uploader("Upload your voice (wav/mp3)", type=["wav", "mp3"])
-    if audio_file:
-        recognizer = sr.Recognizer()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-            temp_audio.write(audio_file.read())
-            temp_path = temp_audio.name
-        with sr.AudioFile(temp_path) as source:
-            audio = recognizer.record(source)
-        try:
-            user_input = recognizer.recognize_google(audio)
-            st.write("You said:", user_input)
-        except:
-            st.error("Sorry, could not understand audio.")
-
-# 🌐 Translate + Speak
+# 🌐 Translate and speak output
 if user_input:
     translated = translate_text(user_input, lang_code)
-    st.markdown("#### 🤖 Translated")
+    st.markdown("#### 🤖 Translated Text")
     st.write(translated)
     audio_path = speak_text(translated, lang_code)
     st.audio(audio_path, format="audio/mp3")
@@ -99,16 +134,15 @@ if user_input:
         "translated": translated,
     })
 
-# 🖼️ Image OCR + Translation
+# 🖼️ OCR Translation from Image
 st.markdown("### 🖼️ Image to Multilingual Text")
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
-
 if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp:
         temp.write(uploaded_file.read())
         temp_path = temp.name
-    st.image(temp_path, caption="Uploaded", use_container_width=True)
-    with st.spinner("🔍 Extracting text using Gemini..."):
+    st.image(temp_path, caption="Uploaded Image", use_container_width=True)
+    with st.spinner("🔍 Extracting text..."):
         extracted_text = extract_text_from_image_gemini(temp_path)
     st.markdown("**📜 Extracted Text:**")
     st.write(extracted_text)
@@ -125,9 +159,10 @@ if uploaded_file:
         except Exception as e:
             st.error(f"Translation Error: {e}")
 
-# 🧾 History
+# 🧾 Show History
 if st.checkbox("📜 Show History"):
     for msg in st.session_state.history:
         st.markdown(f"🕒 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
+
