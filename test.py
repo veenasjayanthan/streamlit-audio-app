@@ -1,29 +1,24 @@
-
-
 from utils.audio_emotion import detect_emotion_from_voice
 import streamlit as st
-import os, tempfile
+import os, tempfile, base64
 import speech_recognition as sr
 from datetime import datetime
 import google.generativeai as genai
 from langdetect import detect
 import streamlit.components.v1 as components
 
-# 🔐 Configure Gemini API Key
+# 🔐 Gemini API Key
 GEMINI_API_KEY = "AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc"
 genai.configure(api_key=GEMINI_API_KEY)
 
 # 🌐 Translate using Gemini
 def translate_text(text, target_lang, source_lang=None):
-    prompt = f"""
-    Translate the following text from {source_lang or 'auto-detect'} to {target_lang}.
-    Text: {text}
-    """
+    prompt = f"Translate the following text from {source_lang or 'auto-detect'} to {target_lang}:\n\n{text}"
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(prompt)
     return response.text.strip()
 
-# 🖼️ OCR with Gemini
+# 🖼️ OCR
 def extract_text_from_image_gemini(image_path):
     model = genai.GenerativeModel("gemini-1.5-flash")
     with open(image_path, "rb") as f:
@@ -34,7 +29,7 @@ def extract_text_from_image_gemini(image_path):
     ])
     return response.text.strip()
 
-# 🔊 Text-to-speech
+# 🔊 Text to Speech
 def speak_text(text, lang_code):
     from gtts import gTTS
     path = f"audio_{datetime.now().timestamp()}.mp3"
@@ -42,7 +37,7 @@ def speak_text(text, lang_code):
     tts.save(path)
     return path
 
-# 🌍 Supported languages
+# 🌍 Supported Languages
 def get_supported_languages():
     return {
         "en": "English", "hi": "Hindi", "ml": "Malayalam",
@@ -51,80 +46,91 @@ def get_supported_languages():
         "zh": "Chinese", "ar": "Arabic"
     }
 
-# 🎨 Streamlit UI
-st.set_page_config(page_title="🌐 AI Chat with OCR", layout="centered")
+# 🎨 UI Setup
+st.set_page_config(page_title="🌐 AI Chat with Voice & Image", layout="centered")
 st.markdown("<h1 style='text-align:center'>🌐 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
 
-# ⏳ Init history
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# 🌐 Choose language
+# 🌐 Choose Language
 languages = get_supported_languages()
 lang_name = st.selectbox("Choose Target Language", list(languages.values()))
 lang_code = [k for k, v in languages.items() if v == lang_name][0]
 
-# 🎤 Browser Microphone Recorder
-st.markdown("### 🎙️ Record Voice (browser-based)")
+# 🎤 Voice Recording using browser
+st.markdown("### 🎙️ Record Your Voice")
 components.html("""
-    <html>
-    <body>
-    <button onclick="startRecording()">🎤 Start Recording</button>
+<html>
+  <body>
+    <button onclick="startRecording()">🎤 Start Recording (6 seconds)</button>
     <p id="status"></p>
     <script>
-        let mediaRecorder;
-        let audioChunks = [];
+      let mediaRecorder;
+      let audioChunks = [];
 
-        async function startRecording() {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.start();
-            document.getElementById("status").innerText = "Recording...";
+      async function startRecording() {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.start();
+        document.getElementById("status").innerText = "Recording...";
 
-            mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
-            };
+        mediaRecorder.ondataavailable = event => {
+          audioChunks.push(event.data);
+        };
 
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(audioChunks, { type: 'audio/wav' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = "recorded.wav";
-                a.click();
-                document.getElementById("status").innerText = "Recording saved! Upload below.";
-            };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: 'audio/wav' });
+          const reader = new FileReader();
+          reader.onloadend = function () {
+            const base64data = reader.result.split(',')[1];
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = "/upload-audio";
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "audio";
+            input.value = base64data;
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+          };
+          reader.readAsDataURL(blob);
+          document.getElementById("status").innerText = "Recording saved. Refresh page to try again.";
+        };
 
-            setTimeout(() => {
-                mediaRecorder.stop();
-            }, 6000);
-        }
+        setTimeout(() => {
+          mediaRecorder.stop();
+        }, 6000);
+      }
     </script>
-    </body>
-    </html>
-""", height=220)
+  </body>
+</html>
+""", height=250)
 
-# 🔼 Upload recorded audio
-st.markdown("### 🔼 Upload Recorded Audio Below")
+# 🗂️ Accept base64 audio if submitted
+query_params = st.experimental_get_query_params()
+audio_data = st.experimental_get_query_params().get("audio", [None])[0]
 user_input = ""
-audio_file = st.file_uploader("Upload your voice (wav/mp3)", type=["wav", "mp3"])
-if audio_file:
+
+if audio_data:
+    audio_bytes = base64.b64decode(audio_data)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+        f.write(audio_bytes)
+        audio_path = f.name
     recognizer = sr.Recognizer()
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
-        temp_audio.write(audio_file.read())
-        temp_path = temp_audio.name
-    with sr.AudioFile(temp_path) as source:
+    with sr.AudioFile(audio_path) as source:
         audio = recognizer.record(source)
     try:
         user_input = recognizer.recognize_google(audio)
-        st.write("You said:", user_input)
+        st.success("🗣️ You said: " + user_input)
     except:
-        st.error("Sorry, could not understand audio.")
+        st.error("Could not understand audio.")
 
-# 🌐 Translate and speak output
+# 🔄 Translate and Speak
 if user_input:
     translated = translate_text(user_input, lang_code)
-    st.markdown("#### 🤖 Translated Text")
+    st.markdown("#### 🌐 Translated Text")
     st.write(translated)
     audio_path = speak_text(translated, lang_code)
     st.audio(audio_path, format="audio/mp3")
@@ -134,7 +140,7 @@ if user_input:
         "translated": translated,
     })
 
-# 🖼️ OCR Translation from Image
+# 🖼️ OCR from Image
 st.markdown("### 🖼️ Image to Multilingual Text")
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 if uploaded_file:
@@ -166,3 +172,7 @@ if st.checkbox("📜 Show History"):
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
 
+
+
+    
+    
