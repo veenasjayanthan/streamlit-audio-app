@@ -10,20 +10,12 @@ import tempfile
 import os
 import wave
 
-# Load Whisper model
-model = whisper.load_model("base")  # or "tiny" for faster, "small" for better
+# Page config
+st.set_page_config(page_title="Multilingual Voice Translator")
+st.title("🌍 Multilingual AI Chat with Voice & Image")
 
-# Translator
-translator = Translator()
-
-# Queue to store audio frames
-audio_queue = queue.Queue()
-
-# Language selection
-st.set_page_config(page_title="Live Voice Translator")
-st.title("🎙️ Real-Time Voice Translation")
-
-lang = st.selectbox("Translate to", ["English", "Malayalam", "Hindi", "French", "German"])
+# Language selector
+lang = st.selectbox("Choose Target Language", ["English", "Malayalam", "Hindi", "French", "German"])
 lang_codes = {
     "English": "en",
     "Malayalam": "ml",
@@ -32,40 +24,47 @@ lang_codes = {
     "German": "de"
 }
 
+# Translator and Whisper model
+translator = Translator()
+model = whisper.load_model("base")
+
+# Queue to handle audio frames
+audio_queue = queue.Queue()
+
 # Audio processing class
 class AudioProcessor:
     def __init__(self):
-        self.buffer = b""
         self.sample_rate = 48000
 
     def recv(self, frame: av.AudioFrame) -> av.AudioFrame:
         audio = frame.to_ndarray()
-        audio = audio.mean(axis=0).astype(np.int16).tobytes()  # Mono
+        audio = audio.mean(axis=0).astype(np.int16).tobytes()
         audio_queue.put(audio)
         return frame
 
+# WebRTC streamer
 webrtc_streamer(
-    key="live-voice",
+    key="stream",
     mode=WebRtcMode.SENDONLY,
     in_audio=True,
     audio_processor_factory=AudioProcessor
 )
 
-# Background thread to transcribe and translate
-def process_audio():
-    audio_bytes = b""
+# Worker thread to process audio
+def transcribe_audio():
+    audio_data = b""
     while True:
         try:
-            audio_chunk = audio_queue.get(timeout=5)
-            audio_bytes += audio_chunk
+            chunk = audio_queue.get(timeout=5)
+            audio_data += chunk
 
-            if len(audio_bytes) >= 48000 * 5 * 2:  # 5 seconds of audio
+            if len(audio_data) >= 48000 * 5 * 2:  # 5 seconds
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
                     wf = wave.open(f.name, 'wb')
                     wf.setnchannels(1)
                     wf.setsampwidth(2)
                     wf.setframerate(48000)
-                    wf.writeframes(audio_bytes)
+                    wf.writeframes(audio_data)
                     wf.close()
 
                     result = model.transcribe(f.name)
@@ -77,16 +76,16 @@ def process_audio():
                         st.session_state["last_translated"] = translated
 
                 os.unlink(f.name)
-                audio_bytes = b""
+                audio_data = b""
         except queue.Empty:
             continue
 
-# Start the background thread
-if "audio_thread_started" not in st.session_state:
-    threading.Thread(target=process_audio, daemon=True).start()
-    st.session_state["audio_thread_started"] = True
+# Start thread only once
+if "started" not in st.session_state:
+    threading.Thread(target=transcribe_audio, daemon=True).start()
+    st.session_state["started"] = True
 
 # Show results
 if "last_text" in st.session_state:
-    st.markdown(f"**🗣️ You said:** `{st.session_state['last_text']}`")
+    st.markdown(f"**🗣 You said:** `{st.session_state['last_text']}`")
     st.markdown(f"**🌐 Translated ({lang}):** `{st.session_state['last_translated']}`")
