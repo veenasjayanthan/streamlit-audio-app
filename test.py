@@ -6,12 +6,13 @@ import google.generativeai as genai
 from langdetect import detect
 from gtts import gTTS
 
-# Optional voice support imports
+# Optional: Try importing speech recognition
 try:
     import speech_recognition as sr
-    HAS_PYAUDIO = True
+    sr.Microphone()  # test if PyAudio is working
+    HAS_MIC = True
 except Exception:
-    HAS_PYAUDIO = False
+    HAS_MIC = False
 
 # ============ CONFIGURE GEMINI API ============
 genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your actual Gemini API key
@@ -63,28 +64,32 @@ lang_code = [k for k, v in languages.items() if v == lang_name][0]
 # ============ TEXT / VOICE INPUT ============
 st.markdown("### 🎤 Speak or 💬 Type")
 user_input = ""
-use_voice = st.toggle("Use Voice Input", value=False)
 
-if not use_voice or not HAS_PYAUDIO:
+if HAS_MIC:
+    use_voice = st.toggle("Use Voice Input", value=False)
+else:
+    use_voice = False
+    st.warning("⚠️ Microphone not available. Using text input only.")
+
+if not use_voice:
     user_input = st.text_input("Enter your message")
-elif HAS_PYAUDIO:
+elif HAS_MIC:
     if st.button("🎙️ Start Recording"):
         recognizer = sr.Recognizer()
-        try:
-            with sr.Microphone() as source:
-                st.info("🎙️ Listening...")
-                audio = recognizer.listen(source, phrase_time_limit=6)
+        with sr.Microphone() as source:
+            st.info("Listening...")
+            audio = recognizer.listen(source, phrase_time_limit=6)
+            try:
                 user_input = recognizer.recognize_google(audio)
                 st.success("You said: " + user_input)
-        except Exception as e:
-            st.error(f"Microphone Error: {e}")
+            except Exception as e:
+                st.error(f"Could not understand audio: {e}")
 
 # ============ TEXT TRANSLATION ============
 if user_input:
     translated = translate_text(user_input, lang_code)
     st.markdown("#### 🤖 Translated")
     st.write(translated)
-
     audio_path = speak_text(translated, lang_code)
     st.audio(audio_path, format="audio/mp3")
 
@@ -131,4 +136,5 @@ if st.checkbox("📜 Show History"):
         st.markdown(f"🕒 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
+
 
