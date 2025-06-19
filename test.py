@@ -4,13 +4,13 @@ import speech_recognition as sr
 import av
 from googletrans import Translator
 
+# Setup
 st.set_page_config(page_title="Live Voice Translator", layout="centered")
+st.title("🎤 Speak to Translate")
+st.markdown("Speak directly into the microphone and get translation instantly.")
 
-st.title("🎤 Live Voice Translator 🌐")
-st.markdown("Speak into the mic and get the translation in real time.")
-
-# Select output language
-lang = st.selectbox("Choose output language", ["English", "Malayalam", "Hindi", "French", "German"])
+# Language options
+lang = st.selectbox("Translate to", ["English", "Malayalam", "Hindi", "French", "German"])
 lang_codes = {
     "English": "en",
     "Malayalam": "ml",
@@ -19,35 +19,31 @@ lang_codes = {
     "German": "de"
 }
 
+# Translator and recognizer
 translator = Translator()
-
-# Recognizer setup
 recognizer = sr.Recognizer()
 
+# Audio processing class
 class AudioProcessor:
-    def __init__(self):
+    def __init__(self) -> None:
         self.recognizer = recognizer
         self.translator = translator
 
-    def recv(self, frame):
-        audio = frame.to_ndarray()
-        # Not converting here because we need to handle audio differently below
-        return av.AudioFrame.from_ndarray(audio, layout="mono")
-
-    def recv_audio(self, frame: av.AudioFrame):
+    def recv_audio(self, frame: av.AudioFrame) -> av.AudioFrame:
         pcm = frame.to_ndarray().flatten().tobytes()
-        with sr.AudioData(pcm, frame.sample_rate, 2) as audio_data:
-            try:
-                text = self.recognizer.recognize_google(audio_data)
-                st.session_state['last_text'] = text
-            except sr.UnknownValueError:
-                st.session_state['last_text'] = "[Unclear Speech]"
-            except sr.RequestError as e:
-                st.session_state['last_text'] = f"[Error: {e}]"
+        audio_data = sr.AudioData(pcm, frame.sample_rate, 2)
+        try:
+            text = self.recognizer.recognize_google(audio_data)
+            st.session_state['text'] = text
+        except sr.UnknownValueError:
+            st.session_state['text'] = "[Unclear speech]"
+        except sr.RequestError as e:
+            st.session_state['text'] = f"[Error: {e}]"
+        return frame
 
-# WebRTC Stream
-webrtc_ctx = webrtc_streamer(
-    key="voice-translator",
+# WebRTC streaming (mic only)
+webrtc_streamer(
+    key="live-translate",
     mode=WebRtcMode.SENDONLY,
     in_audio=True,
     audio_processor_factory=AudioProcessor,
@@ -57,8 +53,9 @@ webrtc_ctx = webrtc_streamer(
     )
 )
 
-if 'last_text' in st.session_state:
-    st.markdown(f"🗣️ You said: **{st.session_state['last_text']}**")
-    translated = translator.translate(st.session_state['last_text'], dest=lang_codes[lang])
-    st.markdown(f"🌐 Translation ({lang}): **{translated.text}**")
-
+# Display translation
+if 'text' in st.session_state:
+    spoken = st.session_state['text']
+    translated = translator.translate(spoken, dest=lang_codes[lang]).text
+    st.markdown(f"🗣️ You said: **{spoken}**")
+    st.markdown(f"🌐 Translation ({lang}): **{translated}**")
