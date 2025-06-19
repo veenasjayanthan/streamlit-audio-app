@@ -5,11 +5,17 @@ from datetime import datetime
 import google.generativeai as genai
 from langdetect import detect
 from gtts import gTTS
-from pydub import AudioSegment
-import base64
+
+# Optional: Try importing speech recognition
+try:
+    import speech_recognition as sr
+    sr.Microphone()  # test if PyAudio is working
+    HAS_MIC = True
+except Exception:
+    HAS_MIC = False
 
 # ============ CONFIGURE GEMINI API ============
-genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your Gemini API key
+genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your actual Gemini API key
 
 # ============ TRANSLATE TEXT USING GEMINI ============
 def translate_text(text, target_lang, source_lang=None):
@@ -18,7 +24,7 @@ def translate_text(text, target_lang, source_lang=None):
     response = model.generate_content(prompt)
     return response.text.strip()
 
-# ============ IMAGE OCR ============
+# ============ GEMINI IMAGE OCR ============
 def extract_text_from_image_gemini(image_path):
     model = genai.GenerativeModel("gemini-1.5-flash")
     with open(image_path, "rb") as f:
@@ -29,10 +35,10 @@ def extract_text_from_image_gemini(image_path):
     ])
     return response.text.strip()
 
-# ============ TEXT TO SPEECH ============
+# ============ AUDIO SPEAK ============
 def speak_text(text, lang_code):
-    tts = gTTS(text, lang=lang_code)
     path = f"audio_{datetime.now().timestamp()}.mp3"
+    tts = gTTS(text, lang=lang_code)
     tts.save(path)
     return path
 
@@ -45,7 +51,7 @@ def get_supported_languages():
     }
 
 # ============ STREAMLIT UI ============
-st.set_page_config(page_title="🌐 Multilingual Voice/Image Translator", layout="centered")
+st.set_page_config(page_title="AI Chat with OCR", layout="centered")
 st.markdown("<h1 style='text-align:center'>🌐 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
 
 if "history" not in st.session_state:
@@ -55,38 +61,35 @@ languages = get_supported_languages()
 lang_name = st.selectbox("Choose Target Language", list(languages.values()))
 lang_code = [k for k, v in languages.items() if v == lang_name][0]
 
-# ============ VOICE / TEXT ============
+# ============ TEXT / VOICE INPUT ============
 st.markdown("### 🎤 Speak or 💬 Type")
-input_mode = st.radio("Choose Input Mode:", ["Text", "Voice (Browser Upload)"], horizontal=True)
-
 user_input = ""
 
-if input_mode == "Text":
+if HAS_MIC:
+    use_voice = st.toggle("Use Voice Input", value=False)
+else:
+    use_voice = False
+    st.warning("⚠️ Microphone not available. Using text input only.")
+
+if not use_voice:
     user_input = st.text_input("Enter your message")
+elif HAS_MIC:
+    if st.button("🎙️ Start Recording"):
+        recognizer = sr.Recognizer()
+        with sr.Microphone() as source:
+            st.info("Listening...")
+            audio = recognizer.listen(source, phrase_time_limit=6)
+            try:
+                user_input = recognizer.recognize_google(audio)
+                st.success("You said: " + user_input)
+            except Exception as e:
+                st.error(f"Could not understand audio: {e}")
 
-elif input_mode == "Voice (Browser Upload)":
-    st.info("Record your voice using your device and upload the audio file.")
-    audio_file = st.file_uploader("Upload recorded audio (.mp3 or .wav)", type=["mp3", "wav"])
-    if audio_file:
-        audio_path = os.path.join(tempfile.gettempdir(), audio_file.name)
-        with open(audio_path, "wb") as f:
-            f.write(audio_file.read())
-
-        audio = AudioSegment.from_file(audio_path)
-        audio.export("temp.wav", format="wav")  # Convert for whisper
-
-        import whisper
-        model = whisper.load_model("base")
-        result = model.transcribe("temp.wav")
-        user_input = result["text"]
-        st.success("Recognized Text: " + user_input)
-
-# ============ TRANSLATE ============
+# ============ TEXT TRANSLATION ============
 if user_input:
     translated = translate_text(user_input, lang_code)
     st.markdown("#### 🤖 Translated")
     st.write(translated)
-
     audio_path = speak_text(translated, lang_code)
     st.audio(audio_path, format="audio/mp3")
 
@@ -98,10 +101,10 @@ if user_input:
 
 # ============ IMAGE OCR ============
 st.markdown("### 🖼️ Image to Multilingual Text")
-uploaded_image = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
-if uploaded_image:
+uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
+if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp:
-        temp.write(uploaded_image.read())
+        temp.write(uploaded_file.read())
         temp_path = temp.name
 
     st.image(temp_path, caption="Uploaded Image", use_container_width=True)
@@ -133,6 +136,7 @@ if st.checkbox("📜 Show History"):
         st.markdown(f"🕒 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
+
 
 
 
