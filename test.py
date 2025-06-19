@@ -1,21 +1,24 @@
 import streamlit as st
 import os
 import tempfile
-import speech_recognition as sr
 from datetime import datetime
 import google.generativeai as genai
 from langdetect import detect
 from gtts import gTTS
+
+# Optional voice support imports
+try:
+    import speech_recognition as sr
+    HAS_PYAUDIO = True
+except Exception:
+    HAS_PYAUDIO = False
 
 # ============ CONFIGURE GEMINI API ============
 genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your actual Gemini API key
 
 # ============ TRANSLATE TEXT USING GEMINI ============
 def translate_text(text, target_lang, source_lang=None):
-    prompt = f"""
-    Translate the following text from {source_lang or 'auto-detect'} to {target_lang}.
-    Text: {text}
-    """
+    prompt = f"Translate the following text from {source_lang or 'auto-detect'} to {target_lang}.\nText: {text}"
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(prompt)
     return response.text.strip()
@@ -50,58 +53,56 @@ def get_supported_languages():
 st.set_page_config(page_title="AI Chat with OCR", layout="centered")
 st.markdown("<h1 style='text-align:center'>🌐 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
 
-# -- INIT SESSION --
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# -- Language Selection --
 languages = get_supported_languages()
 lang_name = st.selectbox("Choose Target Language", list(languages.values()))
 lang_code = [k for k, v in languages.items() if v == lang_name][0]
 
-# -- Voice / Text Input --
+# ============ TEXT / VOICE INPUT ============
 st.markdown("### 🎤 Speak or 💬 Type")
 user_input = ""
 use_voice = st.toggle("Use Voice Input", value=False)
 
-if not use_voice:
+if not use_voice or not HAS_PYAUDIO:
     user_input = st.text_input("Enter your message")
-else:
+elif HAS_PYAUDIO:
     if st.button("🎙️ Start Recording"):
         recognizer = sr.Recognizer()
-        with sr.Microphone() as source:
-            st.info("Listening...")
-            audio = recognizer.listen(source, phrase_time_limit=6)
-            st.success("Recorded!")
         try:
-            user_input = recognizer.recognize_google(audio)
-            st.write("You said:", user_input)
-        except:
-            st.error("Sorry, could not understand audio.")
+            with sr.Microphone() as source:
+                st.info("🎙️ Listening...")
+                audio = recognizer.listen(source, phrase_time_limit=6)
+                user_input = recognizer.recognize_google(audio)
+                st.success("You said: " + user_input)
+        except Exception as e:
+            st.error(f"Microphone Error: {e}")
 
-# -- Handle Input --
+# ============ TEXT TRANSLATION ============
 if user_input:
     translated = translate_text(user_input, lang_code)
     st.markdown("#### 🤖 Translated")
     st.write(translated)
+
     audio_path = speak_text(translated, lang_code)
     st.audio(audio_path, format="audio/mp3")
+
     st.session_state.history.append({
         "timestamp": datetime.now().isoformat(),
         "input": user_input,
         "translated": translated,
     })
 
-# -- IMAGE OCR + TRANSLATION --
+# ============ IMAGE OCR ============
 st.markdown("### 🖼️ Image to Multilingual Text")
-
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 if uploaded_file:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp:
         temp.write(uploaded_file.read())
         temp_path = temp.name
 
-    st.image(temp_path, caption="Uploaded", use_container_width=True)
+    st.image(temp_path, caption="Uploaded Image", use_container_width=True)
 
     with st.spinner("🔍 Extracting text using Gemini..."):
         extracted_text = extract_text_from_image_gemini(temp_path)
@@ -124,9 +125,10 @@ if uploaded_file:
         except Exception as e:
             st.error(f"Translation Error: {e}")
 
-# -- HISTORY --
+# ============ HISTORY ============
 if st.checkbox("📜 Show History"):
     for msg in st.session_state.history:
         st.markdown(f"🕒 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
+
