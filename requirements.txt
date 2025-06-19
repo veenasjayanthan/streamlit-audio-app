@@ -6,6 +6,8 @@ numpy
 scipy
 soundfile
 SpeechRecognition
+langdetect
+
 
 
 
