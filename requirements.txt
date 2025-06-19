@@ -1,4 +1,10 @@
 streamlit
+streamlit-webrtc
+SpeechRecognition
+langdetect
+gtts
+google-generativeai
+streamlit
 librosa
 numpy
 scipy
