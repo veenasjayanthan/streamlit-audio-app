@@ -5,6 +5,7 @@ import speech_recognition as sr
 from datetime import datetime
 import google.generativeai as genai
 from langdetect import detect
+from gtts import gTTS
 
 # ============ CONFIGURE GEMINI API ============
 genai.configure(api_key="AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc")  # <-- REPLACE with your key
@@ -20,11 +21,6 @@ def translate_text(text, target_lang, source_lang=None):
     return response.text.strip()
 
 # ============ GEMINI IMAGE OCR ============
-# def extract_text_from_image_gemini(image_path):
-#     model = genai.GenerativeModel("gemini-1.5-flash")
-#     with open(image_path, "rb") as f:
-#         img_data = f.read()
-
 def extract_text_from_image_gemini(image_path):
     model = genai.GenerativeModel("gemini-1.5-flash")
     with open(image_path, "rb") as f:
@@ -36,22 +32,8 @@ def extract_text_from_image_gemini(image_path):
     ])
     return response.text.strip()
 
-
-    # response = model.generate_content([
-    #     "Extract and return only the raw visible text from this image.",
-    #     genai.types.Blob(mime_type="image/png", data=img_data)
-    # ])
-
-    response = model.generate_content([
-    "Extract and return only the raw visible text from this image.",
-    {"mime_type": "image/png", "data": img_data}
-    ])
-
-    return response.text.strip()
-
 # ============ AUDIO SPEAK (OPTIONAL: gTTS or pyttsx3 can be used here) ============
 def speak_text(text, lang_code):
-    from gtts import gTTS
     path = f"audio_{datetime.now().timestamp()}.mp3"
     tts = gTTS(text, lang=lang_code)
     tts.save(path)
@@ -94,17 +76,16 @@ use_voice = st.toggle("Use Voice Input", value=False)
 if not use_voice:
     user_input = st.text_input("Enter your message")
 else:
-    if st.button("🎙️ Start Recording"):
-        recognizer = sr.Recognizer()
-        with sr.Microphone() as source:
-            st.info("Listening...")
-            audio = recognizer.listen(source, phrase_time_limit=6)
-            st.success("Recorded!")
-        try:
-            user_input = recognizer.recognize_google(audio)
-            st.write("You said:", user_input)
-        except:
-            st.error("Sorry, could not understand audio.")
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        st.info("Listening... Please speak clearly.")
+        audio = recognizer.listen(source, phrase_time_limit=6)
+        st.success("Recorded!")
+    try:
+        user_input = recognizer.recognize_google(audio)
+        st.write("You said:", user_input)
+    except:
+        st.error("Sorry, could not understand audio.")
 
 # -- Handle Input --
 if user_input:
@@ -160,6 +141,3 @@ if st.checkbox("📜 Show History"):
         st.markdown(f"🕒 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
-
-
-
