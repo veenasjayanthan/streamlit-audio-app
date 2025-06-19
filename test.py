@@ -15,6 +15,8 @@ except Exception:
     HAS_MIC = False
 
 # ============ CONFIGURE GEMINI API ============
+
+YOUR_API_KEY_HERE="AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc"
 genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your Gemini API Key
 
 # ============ TRANSLATE TEXT USING GEMINI ============
