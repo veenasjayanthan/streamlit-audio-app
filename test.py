@@ -1,3 +1,16 @@
+import streamlit.components.v1 as components
+
+components.html("""
+<link rel="manifest" href="/.streamlit/public/manifest.json">
+<meta name="theme-color" content="#1f77b4">
+""", height=0)
+
+
+
+
+
+
+
 import streamlit as st
 import os
 import tempfile
