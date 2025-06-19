@@ -1,13 +1,14 @@
-from utils.audio_emotion import detect_emotion_from_voice
 import streamlit as st
-import os, tempfile
+import os
+import tempfile
 import speech_recognition as sr
 from datetime import datetime
 import google.generativeai as genai
 from langdetect import detect
+from gtts import gTTS
 
 # ============ CONFIGURE GEMINI API ============
-genai.configure(api_key="AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc")  # <-- REPLACE with your key
+genai.configure(api_key="YOUR_API_KEY_HERE")  # <-- Replace with your actual Gemini API key
 
 # ============ TRANSLATE TEXT USING GEMINI ============
 def translate_text(text, target_lang, source_lang=None):
@@ -20,11 +21,6 @@ def translate_text(text, target_lang, source_lang=None):
     return response.text.strip()
 
 # ============ GEMINI IMAGE OCR ============
-# def extract_text_from_image_gemini(image_path):
-#     model = genai.GenerativeModel("gemini-1.5-flash")
-#     with open(image_path, "rb") as f:
-#         img_data = f.read()
-
 def extract_text_from_image_gemini(image_path):
     model = genai.GenerativeModel("gemini-1.5-flash")
     with open(image_path, "rb") as f:
@@ -36,22 +32,8 @@ def extract_text_from_image_gemini(image_path):
     ])
     return response.text.strip()
 
-
-    # response = model.generate_content([
-    #     "Extract and return only the raw visible text from this image.",
-    #     genai.types.Blob(mime_type="image/png", data=img_data)
-    # ])
-
-    response = model.generate_content([
-    "Extract and return only the raw visible text from this image.",
-    {"mime_type": "image/png", "data": img_data}
-    ])
-
-    return response.text.strip()
-
-# ============ AUDIO SPEAK (OPTIONAL: gTTS or pyttsx3 can be used here) ============
+# ============ AUDIO SPEAK ============
 def speak_text(text, lang_code):
-    from gtts import gTTS
     path = f"audio_{datetime.now().timestamp()}.mp3"
     tts = gTTS(text, lang=lang_code)
     tts.save(path)
@@ -74,8 +56,8 @@ def get_supported_languages():
     }
 
 # ============ STREAMLIT UI ============
-st.set_page_config(page_title="🌐 AI Chat with OCR", layout="centered")
-st.markdown("<h1 style='text-align:center'>🌐 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
+st.set_page_config(page_title="\ud83c\udf10 AI Chat with OCR", layout="centered")
+st.markdown("<h1 style='text-align:center'>\ud83c\udf10 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
 
 # -- INIT SESSION --
 if "history" not in st.session_state:
@@ -87,14 +69,14 @@ lang_name = st.selectbox("Choose Target Language", list(languages.values()))
 lang_code = [k for k, v in languages.items() if v == lang_name][0]
 
 # -- Voice / Text Input --
-st.markdown("### 🎤 Speak or 💬 Type")
+st.markdown("### \ud83c\udfa4 Speak or \ud83d\udcac Type")
 user_input = ""
 use_voice = st.toggle("Use Voice Input", value=False)
 
 if not use_voice:
     user_input = st.text_input("Enter your message")
 else:
-    if st.button("🎙️ Start Recording"):
+    if st.button("\ud83c\udfa4 Start Recording"):
         recognizer = sr.Recognizer()
         with sr.Microphone() as source:
             st.info("Listening...")
@@ -109,7 +91,7 @@ else:
 # -- Handle Input --
 if user_input:
     translated = translate_text(user_input, lang_code)
-    st.markdown("#### 🤖 Translated")
+    st.markdown("#### \ud83e\uddd0 Translated")
     st.write(translated)
 
     audio_path = speak_text(translated, lang_code)
@@ -122,7 +104,7 @@ if user_input:
     })
 
 # -- IMAGE OCR + TRANSLATION --
-st.markdown("### 🖼️ Image to Multilingual Text")
+st.markdown("### \ud83d\uddbc\ufe0f Image to Multilingual Text")
 
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
@@ -133,10 +115,10 @@ if uploaded_file:
 
     st.image(temp_path, caption="Uploaded", use_container_width=True)
 
-    with st.spinner("🔍 Extracting text using Gemini..."):
+    with st.spinner("\ud83d\udd0d Extracting text using Gemini..."):
         extracted_text = extract_text_from_image_gemini(temp_path)
 
-    st.markdown("**📜 Extracted Text:**")
+    st.markdown("**\ud83d\udcdc Extracted Text:**")
     st.write(extracted_text)
 
     if extracted_text.strip():
@@ -146,7 +128,7 @@ if uploaded_file:
             st.success(f"Detected Language: {detected_lang_name} ({detected_lang_code})")
 
             translated_text = translate_text(extracted_text, lang_code, detected_lang_code)
-            st.markdown("**🌐 Translated Text:**")
+            st.markdown("**\ud83c\udf10 Translated Text:**")
             st.write(translated_text)
 
             audio_path = speak_text(translated_text, lang_code)
@@ -155,9 +137,9 @@ if uploaded_file:
             st.error(f"Translation Error: {e}")
 
 # -- HISTORY --
-if st.checkbox("📜 Show History"):
+if st.checkbox("\ud83d\udcdc Show History"):
     for msg in st.session_state.history:
-        st.markdown(f"🕒 {msg['timestamp']}")
+        st.markdown(f"\ud83d\udd52 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
 
