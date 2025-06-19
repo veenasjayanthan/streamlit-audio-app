@@ -9,6 +9,8 @@ import google.generativeai as genai
 from langdetect import detect
 
 # 🔐 Configure Gemini with secret key (set in Streamlit Cloud)
+GEMINI_API_KEY = "AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc"
+
 genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 # 🌐 Translate using Gemini
