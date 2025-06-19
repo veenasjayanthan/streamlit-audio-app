@@ -1,7 +1,7 @@
 
 streamlit
-SpeechRecognition
+google-generativeai
+streamlit-webrtc
+speechrecognition
 langdetect
 gtts
-google-generativeai
-librosa
