@@ -9,31 +9,39 @@ from gtts import gTTS
 # Optional: Try importing speech recognition
 try:
     import speech_recognition as sr
-    sr.Microphone()  # test if PyAudio is working
+    sr.Microphone()  # test if microphone is available
     HAS_MIC = True
 except Exception:
     HAS_MIC = False
 
 # ============ CONFIGURE GEMINI API ============
-genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your actual Gemini API key
+genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your Gemini API Key
 
 # ============ TRANSLATE TEXT USING GEMINI ============
 def translate_text(text, target_lang, source_lang=None):
     prompt = f"Translate the following text from {source_lang or 'auto-detect'} to {target_lang}.\nText: {text}"
     model = genai.GenerativeModel("gemini-1.5-flash")
-    response = model.generate_content(prompt)
-    return response.text.strip()
+    try:
+        response = model.generate_content([prompt])  # ✅ WRAPPED IN LIST
+        return response.text.strip()
+    except Exception as e:
+        st.error(f"❌ Gemini Translation Error: {e}")
+        return "Translation failed."
 
 # ============ GEMINI IMAGE OCR ============
 def extract_text_from_image_gemini(image_path):
     model = genai.GenerativeModel("gemini-1.5-flash")
     with open(image_path, "rb") as f:
         img_data = f.read()
-    response = model.generate_content([
-        "Extract and return only the raw visible text from this image.",
-        {"mime_type": "image/png", "data": img_data}
-    ])
-    return response.text.strip()
+    try:
+        response = model.generate_content([
+            "Extract and return only the raw visible text from this image.",
+            {"mime_type": "image/png", "data": img_data}
+        ])
+        return response.text.strip()
+    except Exception as e:
+        st.error(f"❌ OCR Error: {e}")
+        return ""
 
 # ============ AUDIO SPEAK ============
 def speak_text(text, lang_code):
@@ -51,7 +59,7 @@ def get_supported_languages():
     }
 
 # ============ STREAMLIT UI ============
-st.set_page_config(page_title="AI Chat with OCR", layout="centered")
+st.set_page_config(page_title="🌐 AI Chat with OCR", layout="centered")
 st.markdown("<h1 style='text-align:center'>🌐 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
 
 if "history" not in st.session_state:
@@ -73,11 +81,11 @@ else:
 
 if not use_voice:
     user_input = st.text_input("Enter your message")
-elif HAS_MIC:
+else:
     if st.button("🎙️ Start Recording"):
         recognizer = sr.Recognizer()
         with sr.Microphone() as source:
-            st.info("Listening...")
+            st.info("🎙️ Listening...")
             audio = recognizer.listen(source, phrase_time_limit=6)
             try:
                 user_input = recognizer.recognize_google(audio)
@@ -100,6 +108,7 @@ if user_input:
     })
 
 # ============ IMAGE OCR ============
+
 st.markdown("### 🖼️ Image to Multilingual Text")
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 if uploaded_file:
@@ -136,6 +145,7 @@ if st.checkbox("📜 Show History"):
         st.markdown(f"🕒 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
+
 
 
 
