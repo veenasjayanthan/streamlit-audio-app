@@ -1,7 +1,14 @@
 
-streamlit
-google-generativeai
+
 streamlit-webrtc
 speechrecognition
 langdetect
 gtts
+
+streamlit
+google-generativeai
+
+gTTS
+
+pydub
+ffmpeg-python
