@@ -17,6 +17,14 @@ soundfile
 SpeechRecognition
 langdetect
 gTTS
+streamlit
+streamlit-webrtc
+speechrecognition
+pyaudio
+gtts
+langdetect
+google-generativeai
+
 
 
 
