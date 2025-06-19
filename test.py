@@ -1,16 +1,17 @@
-from utils.audio_emotion import detect_emotion_from_voice
 import streamlit as st
-import os, tempfile
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, ClientSettings
 import speech_recognition as sr
+import tempfile
 from datetime import datetime
-import google.generativeai as genai
 from langdetect import detect
 from gtts import gTTS
+import os
+import google.generativeai as genai
 
-# ============ CONFIGURE GEMINI API ============
-genai.configure(api_key="AIzaSyAnJhtbDRkYYP3kvIZ9i2LonZvzSG9XzAc")  # <-- REPLACE with your key
+# ====== CONFIGURE GEMINI ======
+genai.configure(api_key="YOUR_API_KEY_HERE")  # Replace with your Gemini API key
 
-# ============ TRANSLATE TEXT USING GEMINI ============
+# ====== TRANSLATE TEXT ======
 def translate_text(text, target_lang, source_lang=None):
     prompt = f"""
     Translate the following text from {source_lang or 'auto-detect'} to {target_lang}.
@@ -20,7 +21,7 @@ def translate_text(text, target_lang, source_lang=None):
     response = model.generate_content(prompt)
     return response.text.strip()
 
-# ============ GEMINI IMAGE OCR ============
+# ====== EXTRACT TEXT FROM IMAGE ======
 def extract_text_from_image_gemini(image_path):
     model = genai.GenerativeModel("gemini-1.5-flash")
     with open(image_path, "rb") as f:
@@ -32,14 +33,14 @@ def extract_text_from_image_gemini(image_path):
     ])
     return response.text.strip()
 
-# ============ AUDIO SPEAK (OPTIONAL: gTTS or pyttsx3 can be used here) ============
+# ====== SPEAK TEXT ======
 def speak_text(text, lang_code):
     path = f"audio_{datetime.now().timestamp()}.mp3"
     tts = gTTS(text, lang=lang_code)
     tts.save(path)
     return path
 
-# ============ SUPPORTED LANGUAGES ============
+# ====== SUPPORTED LANGUAGES ======
 def get_supported_languages():
     return {
         "en": "English",
@@ -55,39 +56,60 @@ def get_supported_languages():
         "ar": "Arabic"
     }
 
-# ============ STREAMLIT UI ============
+# ====== STREAMLIT UI ======
 st.set_page_config(page_title="🌐 AI Chat with OCR", layout="centered")
 st.markdown("<h1 style='text-align:center'>🌐 Multilingual AI Chat with Voice & Image</h1>", unsafe_allow_html=True)
 
-# -- INIT SESSION --
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# -- Language Selection --
 languages = get_supported_languages()
 lang_name = st.selectbox("Choose Target Language", list(languages.values()))
 lang_code = [k for k, v in languages.items() if v == lang_name][0]
 
-# -- Voice / Text Input --
 st.markdown("### 🎤 Speak or 💬 Type")
 user_input = ""
 use_voice = st.toggle("Use Voice Input", value=False)
 
+# ====== VOICE INPUT ======
 if not use_voice:
     user_input = st.text_input("Enter your message")
 else:
-    recognizer = sr.Recognizer()
-    with sr.Microphone() as source:
-        st.info("Listening... Please speak clearly.")
-        audio = recognizer.listen(source, phrase_time_limit=6)
-        st.success("Recorded!")
-    try:
-        user_input = recognizer.recognize_google(audio)
-        st.write("You said:", user_input)
-    except:
-        st.error("Sorry, could not understand audio.")
+    class AudioProcessor:
+        def __init__(self):
+            self.recognizer = sr.Recognizer()
 
-# -- Handle Input --
+        def recv(self, frame):
+            audio = frame.to_ndarray().tobytes()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                f.write(audio)
+                f.flush()
+                with sr.AudioFile(f.name) as source:
+                    try:
+                        audio_data = self.recognizer.record(source)
+                        text = self.recognizer.recognize_google(audio_data)
+                        st.session_state.user_input = text
+                    except Exception as e:
+                        st.warning("🎧 Could not understand audio")
+
+    webrtc_streamer(
+        key="voice",
+        mode=WebRtcMode.SENDRECV,
+        in_audio=True,
+        client_settings=ClientSettings(
+            media_stream_constraints={"audio": True, "video": False},
+            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
+        ),
+        audio_receiver_size=1024,
+        sendback_audio=False,
+        audio_processor_factory=AudioProcessor,
+    )
+
+    if "user_input" in st.session_state:
+        user_input = st.session_state.user_input
+        st.success("🎙️ You said: " + user_input)
+
+# ====== TRANSLATE & SPEAK ======
 if user_input:
     translated = translate_text(user_input, lang_code)
     st.markdown("#### 🤖 Translated")
@@ -102,9 +124,8 @@ if user_input:
         "translated": translated,
     })
 
-# -- IMAGE OCR + TRANSLATION --
+# ====== IMAGE OCR ======
 st.markdown("### 🖼️ Image to Multilingual Text")
-
 uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
@@ -135,9 +156,10 @@ if uploaded_file:
         except Exception as e:
             st.error(f"Translation Error: {e}")
 
-# -- HISTORY --
+# ====== HISTORY ======
 if st.checkbox("📜 Show History"):
     for msg in st.session_state.history:
         st.markdown(f"🕒 {msg['timestamp']}")
         st.write("You:", msg["input"])
         st.write("Translated:", msg["translated"])
+
