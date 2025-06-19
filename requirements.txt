@@ -1,9 +1,10 @@
-SpeechRecognition
 streamlit
 librosa
 numpy
 scipy
 soundfile
+SpeechRecognition
+
 
 
 
